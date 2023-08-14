@@ -171,4 +171,7 @@ def nightshade(self,date,color="k",delta=0.25,alpha=0.5,ax=None,zorder=2):
         return CS
 
 
+import datetime as dt
 
+dn = dt.datetime(2014, 1, 2, 12)
+nightshade(dn)

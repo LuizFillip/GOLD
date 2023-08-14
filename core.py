@@ -31,7 +31,9 @@ class GOLD:
 
     def maximum_value(self, parameter = 'RADIANCE'):
 
-        radiance_avg = self.dataset[parameter].mean(dim = self.dims).values
+        radiance_avg = self.dataset[
+            parameter
+            ].mean(dim = self.dims).values
 
         wavelength_avg = self.dataset['WAVELENGTH'].mean(dim = self.dims).values
         
