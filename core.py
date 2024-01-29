@@ -162,29 +162,4 @@ def make_table(ax, filenames, infile):
     #remove lines from table
     for key, cell in tab.get_celld().items():
             cell.set_linewidth(0)
-            
-def features_of_map(ax):
-    
-    ax.set_global()
-    ax.gridlines(color = 'grey', linestyle = '--', crs=ccrs.PlateCarree())
-
-    ax.add_feature(cf.NaturalEarthFeature(
-                   category='cultural',
-                   name='admin_1_states_provinces_lines',
-                   scale='50m',
-                   facecolor='none'))
-
-
-    ax.add_feature(cf.COASTLINE, edgecolor='black', lw = 2) 
-    ax.add_feature(cf.BORDERS, linestyle='-', edgecolor='black')
-    
-
-
-def magnetic_equator(filename = 'mag_inclination_2021.txt'):
-    
-    df = pd.read_csv(filename, delim_whitespace = True)
-
-    df = pd.pivot_table(df, columns = 'lon', index = 'lat', values = 'B')
-    
-    return df.columns.values, df.index.values,  df.values
 
