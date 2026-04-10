@@ -3,12 +3,10 @@ import pandas as pd
 import xarray as xr
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
-import cartopy.crs as ccrs
-import cartopy.feature as cfeature
+import cartopy.crs as ccrs 
 import GEO as gg 
 from pathlib import Path
-from scipy.ndimage import generic_filter
-
+from tqdm import tqdm 
 
 def decode_time_coord(ds: xr.Dataset, time_var: str = "scan_start_time") -> xr.Dataset:
     if time_var not in ds:
@@ -22,72 +20,8 @@ def decode_time_coord(ds: xr.Dataset, time_var: str = "scan_start_time") -> xr.D
     return ds.assign_coords(scan_time=("nscans", scan_time))
 
 
-def smooth_boxmean(arr2d: np.ndarray, size: int = 6) -> np.ndarray:
-    arr = np.asarray(arr2d, dtype=float)
 
-    if arr.ndim != 2:
-        raise ValueError("A suavização espera um array 2D.")
-
-    if size <= 1:
-        return arr.copy()
-
-    return generic_filter(arr, function=np.nanmean, size=size, mode="nearest")
-
-
-def get_lat_lon(ds: xr.Dataset, scan_index: int = 0):
-    """
-    Procura automaticamente variáveis plausíveis de latitude/longitude.
-    """
-    lat_candidates = ["lat", "latitude", "GRID_LAT", "glat", "lats"]
-    lon_candidates = ["lon", "longitude", "GRID_LON", "glon", "lons"]
-
-    lat_name = next((v for v in lat_candidates if v in ds.variables), None)
-    lon_name = next((v for v in lon_candidates if v in ds.variables), None)
-
-    if lat_name is None or lon_name is None:
-        raise KeyError(
-            "Não encontrei latitude/longitude reais no arquivo. "
-            "Use print(ds.variables) para ver os nomes corretos."
-        )
-
-    lat = ds[lat_name]
-    lon = ds[lon_name]
-
-    # Se lat/lon dependem de nscans, seleciona o scan
-    if "nscans" in lat.dims:
-        lat = lat.isel(nscans=scan_index)
-    if "nscans" in lon.dims:
-        lon = lon.isel(nscans=scan_index)
-
-    return lat.values, lon.values, lat_name, lon_name
-
-
-def add_map_features(ax):
-    ax.coastlines(linewidth=0.8)
-    ax.add_feature(cfeature.BORDERS, linewidth=0.4)
-    ax.add_feature(cfeature.LAND, alpha=0.15)
-    ax.add_feature(cfeature.OCEAN, alpha=0.08)
-
-
-def ensure_2d_latlon(lat, lon, data_shape):
-    """
-    Garante que lat/lon fiquem compatíveis com a matriz de dados.
-    """
-    lat = np.asarray(lat)
-    lon = np.asarray(lon)
-
-    if lat.shape == data_shape and lon.shape == data_shape:
-        return lat, lon
-
-    if lat.ndim == 1 and lon.ndim == 1:
-        lon2d, lat2d = np.meshgrid(lon, lat)
-        if lat2d.shape == data_shape and lon2d.shape == data_shape:
-            return lat2d, lon2d
-
-    raise ValueError(
-        f"Formato incompatível: data={data_shape}, lat={lat.shape}, lon={lon.shape}"
-    )
-
+ 
 def get_lat_lon2(ds):
     lat_candidates = ["lat", "latitude", "GRID_LAT", "glat"]
     lon_candidates = ["lon", "longitude", "GRID_LON", "glon"]
@@ -99,6 +33,28 @@ def get_lat_lon2(ds):
         raise KeyError("Latitude/Longitude não encontradas.")
 
     return ds[lat_name], ds[lon_name]
+
+def plot_square_area(
+        
+        ax, 
+        lat_min, 
+        lon_min,
+        lat_max, 
+        lon_max, 
+        name):
+    gg.plot_square_area(
+            ax, 
+            lat_min, 
+            lon_min,
+            lat_max, 
+            lon_max,  
+            center_dot = True
+            )
+   
+    c_lon = (lon_max + lon_min) / 2
+    c_lat = (lat_max + lat_min) / 2
+    ax.text(c_lon, c_lat, name)
+
 
 def plot_raw_vs_smoothed(
     ds: xr.Dataset,
@@ -164,68 +120,61 @@ def plot_raw_vs_smoothed(
 
 
  
-infile = Path(r"D:\database\gold")
-files = sorted(infile.glob("*.nc"))
-
-file = files[3]
-ds = xr.open_dataset(file)
-
-scan_index = 14
-ds_scan = ds.isel(nscans=scan_index)
-
-lat, lon = get_lat_lon2(ds_scan)
 
 
 
-ax = plot_raw_vs_smoothed(
-    ds=ds,
-    parameter="on2",
-    scan_index=scan_index,
-    smooth_size=6,
-    cmap="viridis", 
-)
-
-areas = {
-    'BOA' : [(-2, 6), (-65, -58)], 
-    'SMS' : [(-33, -27), (-58, -50)], 
-    'CAJ': [(-25, -19), (-53, -44)], 
-    'SLZ': [(-10, 0), (-49, -42)], 
-    'CAR': [(-40, -35), (-10, -8)]
-    }
-
-
-for name, coord in areas.items():
+def get_values_in_sites(ds_scan):
+    lat, lon = get_lat_lon2(ds_scan)
+    areas = {
+        'BOA' : [(-2, 6), (-65, -58)], 
+        'SMS' : [(-33, -27), (-58, -50)], 
+        'CAJ': [(-25, -19), (-53, -44)], 
+        'SLZ': [(-10, 0), (-49, -42)], 
+        'CAR': [ (-10, -5), (-39, -34)]
+        }
     
-    lat_min, lat_max = coord[0]
-    lon_min, lon_max = coord[1]
+    sub_vls = {'mean': [],'max': [], 'site': [] }
     
-    gg.plot_square_area(
-            ax, 
-            lat_min, 
-            lon_min,
-            lat_max, 
-            lon_max,  
-            center_dot = True
-            )
-    
-    c_lon = (lon_max + lon_min) / 2
-    c_lat = (lat_max + lat_min) / 2
-    ax.text(c_lon, c_lat, name)
+    index = []
+    for name, coord in areas.items():
         
+        lat_min, lat_max = coord[0]
+        lon_min, lon_max = coord[1]
+        
+        mask = (
+            (lon >= lon_min) & (lon <= lon_max) &
+            (lat >= lat_min) & (lat <= lat_max)
+        )
     
-    mask = (
-        (lon >= lon_min) & (lon <= lon_max) &
-        (lat >= lat_min) & (lat <= lat_max)
-    )
+        subset = ds_scan["on2"].where(mask)
+        
+        sub_vls['mean'].append(float(subset.mean(skipna=True)))
+        sub_vls['max'].append(float(subset.max(skipna=True)))
+        sub_vls['site'].append(name.lower())
+        index.append(pd.Timestamp(ds_scan["scan_time"].values))
+     
+    
+    return pd.DataFrame(sub_vls, index = index)
 
-    subset = ds_scan["on2"].where(mask)
-
-    print("Mean:", float(subset.mean(skipna=True)))
-    print("Max :", float(subset.max(skipna=True)))
- 
-
-ds = decode_time_coord(ds)
-
-t = pd.Timestamp(ds["scan_time"].isel(nscans=scan_index).values)
-
-t 
+def get_avg_by_day(ds):
+    ds = decode_time_coord(ds)
+    out = []
+    for scan_index in ds.nscans.values:
+    
+        out.append(get_values_in_sites(ds.isel(nscans=scan_index)))
+        
+        
+    return pd.concat(out).dropna()
+    
+def run_gold_on2():
+    infile = Path(r"D:\database\gold")
+    files = sorted(infile.glob("*.nc"))
+    
+    out = []
+    for file in tqdm(files):
+        try:
+            out.append(get_avg_by_day(xr.open_dataset(file)))
+        except:
+            continue
+    return pd.concat(out)
+    
